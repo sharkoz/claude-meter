@@ -194,8 +194,8 @@ def send_image(img_bytes: bytes) -> None:
             files={"file": ("usage.jpg", img_bytes, "image/jpeg")},
             timeout=10,
         )
-    except requests.exceptions.ChunkedEncodingError:
-        pass  # device closes connection before finishing its response — upload still succeeded
+    except (requests.exceptions.ChunkedEncodingError, requests.exceptions.InvalidHeader):
+        pass  # device closes connection or sends malformed headers — upload still succeeded
     try:
         requests.get(DISPLAY_SET_URL, params={"img": DISPLAY_IMG_PATH}, timeout=15)
     except requests.exceptions.Timeout:
