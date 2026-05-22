@@ -5,7 +5,10 @@ Fetches Claude API usage, renders a 240x240 JPEG, uploads to the display webserv
 """
 
 import io
+import json
 import re
+import shutil
+import subprocess
 import sys
 import time
 from datetime import datetime
@@ -19,6 +22,7 @@ from PIL import Image, ImageDraw, ImageFont
 DISPLAY_HOST   = "192.168.2.233"
 POLL_INTERVAL  = 60   # seconds between refreshes
 W = H          = 240  # display resolution
+LOCAL_OUTPUT   = None  # set to a path (e.g. "/tmp/usage.jpg") to write locally instead of pushing to the device
 
 # ── Display endpoints (derived, do not edit) ──────────────────────────────────
 
@@ -54,13 +58,38 @@ def log(msg: str, err: bool = False) -> None:
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", file=out, flush=True)
 
 
+def read_credentials() -> dict:
+    creds_path = Path.home() / ".claude" / ".credentials.json"
+    data = json.loads(creds_path.read_text())
+    # Credentials may be nested (e.g. under "claudeAiOAuth") or flat
+    for value in [data, *data.values()]:
+        if isinstance(value, dict) and "accessToken" in value:
+            return value
+    raise RuntimeError("accessToken not found in ~/.claude/.credentials.json")
+
+
 def read_token() -> str:
-    creds = Path.home() / ".claude" / ".credentials.json"
-    # Mirror the daemon's grep approach: find the first accessToken anywhere in the JSON
-    m = re.search(r'"accessToken":"([^"]+)"', creds.read_text())
-    if not m:
-        raise RuntimeError("accessToken not found in ~/.claude/.credentials.json")
-    return m.group(1)
+    creds = read_credentials()
+    expires_at = creds.get("expiresAt", 0)
+    if expires_at and time.time() > expires_at / 1000:
+        log("WARNING: OAuth token is expired — run `claude` to refresh", err=True)
+    return creds["accessToken"]
+
+
+def refresh_token() -> str:
+    claude_bin = shutil.which("claude")
+    if not claude_bin:
+        raise RuntimeError("claude binary not found in PATH — cannot auto-refresh token")
+    log("Token stale — launching claude to refresh...")
+    result = subprocess.run(
+        [claude_bin, "-p", "."],
+        capture_output=True,
+        timeout=60,
+        check=False,
+    )
+    log(f"claude exited with code {result.returncode}")
+    time.sleep(1)
+    return read_token()
 
 
 def fetch_usage(token: str) -> dict:
@@ -80,6 +109,11 @@ def fetch_usage(token: str) -> dict:
         },
         timeout=15,
     )
+
+    if resp.status_code == 401:
+        log("401 received — token invalid or expired", err=True)
+        resp.raise_for_status()
+    resp.raise_for_status()
 
     h = resp.headers
     now = time.time()
@@ -194,8 +228,8 @@ def send_image(img_bytes: bytes) -> None:
             files={"file": ("usage.jpg", img_bytes, "image/jpeg")},
             timeout=10,
         )
-    except requests.exceptions.ChunkedEncodingError:
-        pass  # device closes connection before finishing its response — upload still succeeded
+    except requests.exceptions.RequestException:
+        pass  # device closes connection or sends malformed headers — upload still succeeded
     try:
         requests.get(DISPLAY_SET_URL, params={"img": DISPLAY_IMG_PATH}, timeout=15)
     except requests.exceptions.Timeout:
@@ -204,21 +238,35 @@ def send_image(img_bytes: bytes) -> None:
 
 def main() -> None:
     log("=== Clawdmeter host-display daemon ===")
-    log(f"Interval: {POLL_INTERVAL}s  |  Display: {DISPLAY_URL}")
+    if LOCAL_OUTPUT:
+        log(f"Interval: {POLL_INTERVAL}s  |  Mode: local → {LOCAL_OUTPUT}")
+    else:
+        log(f"Interval: {POLL_INTERVAL}s  |  Display: {DISPLAY_URL}")
 
     while True:
         t0 = time.time()
         try:
             token = read_token()
-            data  = fetch_usage(token)
+            try:
+                data = fetch_usage(token)
+            except requests.exceptions.HTTPError as e:
+                if e.response is not None and e.response.status_code == 401:
+                    token = refresh_token()
+                    data  = fetch_usage(token)
+                else:
+                    raise
             log(
                 f"Session {data['session_pct']}% (resets {fmt_reset(data['session_reset_mins'])})  "
                 f"Weekly {data['weekly_pct']}% (resets {fmt_reset(data['weekly_reset_mins'])})  "
                 f"[{data['status']}]"
             )
             img_bytes = render(data)
-            send_image(img_bytes)
-            log("Sent OK")
+            if LOCAL_OUTPUT:
+                Path(LOCAL_OUTPUT).write_bytes(img_bytes)
+                log(f"Written to {LOCAL_OUTPUT}")
+            else:
+                send_image(img_bytes)
+                log("Sent OK")
         except Exception as exc:
             log(f"Error: {exc}", err=True)
 
