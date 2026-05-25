@@ -45,9 +45,10 @@ If a cycle fails for any reason (network hiccup, API error, etc.) the daemon log
 
 ```bash
 pip install -r requirements.txt
+cp .env.example .env
 ```
 
-Edit `DISPLAY_HOST` at the top of `claude-meter.py` to match your display's IP address.
+Edit `.env` and set `DISPLAY_HOST` to your display's IP address.
 
 ## Run
 
@@ -59,18 +60,19 @@ To run as a background service, use your system's process manager (systemd, laun
 
 ## Configuration
 
-Only one value needs to be changed:
+All configuration is via `.env` (copy `.env.example` as a starting point):
 
 | Variable | Default | Description |
 |---|---|---|
 | `DISPLAY_HOST` | `192.168.2.233` | IP address of the display |
 | `POLL_INTERVAL` | `60` | Seconds between refreshes |
-| `W = H` | `240` | Display resolution |
-| `LOCAL_OUTPUT` | `None` | Write the JPEG to a local path instead of pushing to the display (e.g. `/tmp/usage.jpg`). Useful for debugging or piping to another tool. |
+| `W` / `H` | `240` | Display resolution |
+| `LOCAL_OUTPUT` | _(empty)_ | Write the JPEG to a local path instead of pushing to the display (e.g. `/tmp/usage.jpg`). Useful for debugging or piping to another tool. |
 
 ## Dependencies
 
 - `Pillow >= 8.2.0` — image rendering
+- `python-dotenv >= 1.0.0` — `.env` configuration
 - `requests` — HTTP uploads and API calls
 - Font and logo assets from `./assets/` (part of this repo)
 
