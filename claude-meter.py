@@ -80,8 +80,29 @@ def read_token() -> str:
     return creds["accessToken"]
 
 
+def _find_claude_bin() -> str | None:
+    found = shutil.which("claude")
+    if found:
+        return found
+    home = Path.home()
+    candidates = [
+        home / ".local" / "bin" / "claude",
+        home / ".npm-global" / "bin" / "claude",
+        Path("/usr/local/bin/claude"),
+        Path("/usr/bin/claude"),
+    ]
+    # nvm installs
+    nvm_dir = Path(os.environ.get("NVM_DIR", home / ".nvm"))
+    for node_ver in sorted((nvm_dir / "versions" / "node").glob("*/bin/claude"), reverse=True):
+        candidates.append(node_ver)
+    for p in candidates:
+        if p.is_file() and os.access(p, os.X_OK):
+            return str(p)
+    return None
+
+
 def refresh_token() -> str:
-    claude_bin = shutil.which("claude")
+    claude_bin = _find_claude_bin()
     if not claude_bin:
         raise RuntimeError("claude binary not found in PATH — cannot auto-refresh token")
     log("Token stale — launching claude to refresh...")
