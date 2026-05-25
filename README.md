@@ -58,6 +58,22 @@ python3 claude-meter.py
 
 To run as a background service, use your system's process manager (systemd, launchd, etc.) or simply `nohup python3 claude-meter.py &`.
 
+### Install as a systemd service (Linux)
+
+```bash
+chmod +x install-service.sh
+sudo ./install-service.sh
+```
+
+The script creates and enables a `claude-meter.service` unit that starts automatically on boot. It must be run with `sudo` to write to `/etc/systemd/system/`, but the service itself runs as your normal user (detected via `$SUDO_USER`).
+
+To check the service status or logs:
+
+```bash
+systemctl status claude-meter
+journalctl -u claude-meter -f
+```
+
 ## Configuration
 
 All configuration is via `.env` (copy `.env.example` as a starting point):
