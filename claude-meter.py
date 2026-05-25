@@ -6,6 +6,7 @@ Fetches Claude API usage, renders a 240x240 JPEG, uploads to the display webserv
 
 import io
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -15,14 +16,17 @@ from datetime import datetime
 from pathlib import Path
 
 import requests
+from dotenv import load_dotenv
 from PIL import Image, ImageDraw, ImageFont
 
-# ── Configuration (edit this) ────────────────────────────────────────────────
+load_dotenv(Path(__file__).parent / ".env")
 
-DISPLAY_HOST   = "192.168.2.233"
-POLL_INTERVAL  = 60   # seconds between refreshes
-W = H          = 240  # display resolution
-LOCAL_OUTPUT   = None  # set to a path (e.g. "/tmp/usage.jpg") to write locally instead of pushing to the device
+# ── Configuration (.env) ──────────────────────────────────────────────────────
+
+DISPLAY_HOST   = os.getenv("DISPLAY_HOST", "192.168.2.233")
+POLL_INTERVAL  = int(os.getenv("POLL_INTERVAL", "60"))
+W = H          = int(os.getenv("W", "240"))
+LOCAL_OUTPUT   = os.getenv("LOCAL_OUTPUT", "")
 
 # ── Display endpoints (derived, do not edit) ──────────────────────────────────
 
